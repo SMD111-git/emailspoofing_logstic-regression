@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Email Threat Analyzer — ML + MITRE ATT&CK</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #080c10; --bg2: #0d1117; --bg3: #111827;
+      --panel: #0f1923; --border: #1e3a4a; --border2: #22404f;
+      --accent: #00d4ff; --accent2: #00ff9d; --accent3: #ff6b35;
+      --warn: #ffd60a; --danger: #ff2d55;
+      --text: #c9d1d9; --text2: #8b949e; --text3: #6e7681;
+      --safe: #00ff9d; --low: #ffd60a; --medium: #ff9500;
+      --high: #ff2d55; --critical: #ff0055;
+      --font-mono: 'Share Tech Mono', monospace;
+      --font-ui: 'Rajdhani', sans-serif;
+      --font-display: 'Exo 2', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: var(--font-ui); min-height: 100vh; overflow-x: hidden;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px);
+      background-size: 40px 40px;
+    }
+    body::after {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.05) 2px,rgba(0,0,0,.05) 4px);
+    }
+    .app { position: relative; z-index: 1; max-width: 1440px; margin: 0 auto; padding: 0 24px 80px; }
+
+    /* ── Header ── */
+    header {
+      padding: 28px 0 20px; display: flex; align-items: center; gap: 18px;
+      border-bottom: 1px solid var(--border); margin-bottom: 28px;
+    }
+    .logo-icon {
+      width: 48px; height: 48px; flex-shrink: 0;
+      background: linear-gradient(135deg,#001a2e,#003352);
+      border: 1px solid var(--accent); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; font-size: 22px;
+      box-shadow: 0 0 20px rgba(0,212,255,.3);
+    }
+    .header-text h1 {
+      font-family: var(--font-display); font-size: 26px; font-weight: 800;
+      letter-spacing: 2px; text-transform: uppercase;
+      background: linear-gradient(90deg,var(--accent),var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .header-text p { font-family: var(--font-mono); font-size: 10px; color: var(--text3); letter-spacing: 3px; text-transform: uppercase; margin-top: 3px; }
+    .header-right { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+    .status-pill {
+      display: flex; align-items: center; gap: 7px;
+      font-family: var(--font-mono); font-size: 11px; color: var(--accent2);
+      padding: 5px 12px; border: 1px solid rgba(0,255,157,.2); border-radius: 20px;
+      background: rgba(0,255,157,.04);
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent2); box-shadow: 0 0 8px var(--accent2); animation: pulse-dot 2s infinite; }
+    @keyframes pulse-dot { 0%,100% { opacity:1 } 50% { opacity:.3 } }
+    .model-pill {
+      font-family: var(--font-mono); font-size: 10px; color: var(--accent);
+      padding: 5px 10px; border: 1px solid rgba(0,212,255,.2); border-radius: 20px;
+      background: rgba(0,212,255,.04); cursor: pointer; transition: all .15s;
+    }
+    .model-pill:hover { background: rgba(0,212,255,.1); }
+
+    /* ── Three-column layout ── */
+    .main-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; align-items: start; }
+    @media (max-width: 1100px) { .main-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 700px)  { .main-grid { grid-template-columns: 1fr; } }
+
+    /* ── Panel ── */
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; position: relative; margin-bottom: 18px; }
+    .panel:last-child { margin-bottom: 0; }
+    .panel::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg,transparent,var(--accent),transparent); opacity: .5; }
+    .panel-header { padding: 12px 18px; background: rgba(0,212,255,.03); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 9px; }
+    .panel-icon { font-size: 15px; }
+    .panel-title { font-family: var(--font-display); font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); }
+    .panel-badge { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--text3); }
+    .panel-body { padding: 18px; }
+
+    /* ── Form ── */
+    label { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--text3); margin-bottom: 7px; }
+    textarea {
+      width: 100%; background: var(--bg2); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text); font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+      padding: 12px; resize: vertical; min-height: 240px; outline: none; transition: border-color .2s, box-shadow .2s;
+    }
+    textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(0,212,255,.1); }
+    textarea::placeholder { color: var(--text3); }
+    .samples-row { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
+    .sample-btn { padding: 5px 11px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; border-radius: 3px; cursor: pointer; transition: all .15s; border: 1px solid; background: transparent; }
+    .sample-safe   { color: var(--safe);   border-color: var(--safe);   } .sample-safe:hover   { background: rgba(0,255,157,.1); }
+    .sample-low    { color: var(--low);    border-color: var(--low);    } .sample-low:hover    { background: rgba(255,214,10,.1); }
+    .sample-med    { color: var(--medium); border-color: var(--medium); } .sample-med:hover    { background: rgba(255,149,0,.1); }
+    .sample-high   { color: var(--high);   border-color: var(--high);   } .sample-high:hover   { background: rgba(255,45,85,.1); }
+    .btn-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    .btn { padding: 10px 20px; border: none; border-radius: 4px; font-family: var(--font-display); font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; transition: all .2s; display: flex; align-items: center; gap: 7px; }
+    .btn-primary { background: linear-gradient(135deg,#003a50,#005c78); color: var(--accent); border: 1px solid var(--accent); box-shadow: 0 0 15px rgba(0,212,255,.2); }
+    .btn-primary:hover { background: linear-gradient(135deg,#005c78,#007a9e); box-shadow: 0 0 25px rgba(0,212,255,.4); transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border2); font-size: 11px; padding: 8px 14px; }
+    .btn-ghost:hover { border-color: var(--text2); color: var(--text); }
+
+    /* ── Loading ── */
+    .loading { display: none; flex-direction: column; align-items: center; padding: 40px; gap: 14px; }
+    .loading.active { display: flex; }
+    .spinner { width: 44px; height: 44px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-family: var(--font-mono); font-size: 11px; color: var(--accent); letter-spacing: 2px; animation: blink 1.2s step-end infinite; }
+    @keyframes blink { 50% { opacity: .3; } }
+
+    /* ── Score card ── */
+    .score-card { border-radius: 6px; padding: 20px; margin-bottom: 18px; display: flex; align-items: center; gap: 20px; border: 1px solid; position: relative; overflow: hidden; }
+    .score-card::before { content: ''; position: absolute; inset: 0; opacity: .05; background: radial-gradient(ellipse at 30% 50%, currentColor, transparent 60%); }
+    .score-card.safe     { border-color: var(--safe);   color: var(--safe);   background: rgba(0,255,157,.04); }
+    .score-card.low      { border-color: var(--low);    color: var(--low);    background: rgba(255,214,10,.04); }
+    .score-card.medium   { border-color: var(--medium); color: var(--medium); background: rgba(255,149,0,.04); }
+    .score-card.high     { border-color: var(--high);   color: var(--high);   background: rgba(255,45,85,.04); }
+    .score-card.critical { border-color: var(--critical);color:var(--critical);background: rgba(255,0,85,.06); }
+    .score-number { font-family: var(--font-display); font-size: 56px; font-weight: 800; line-height: 1; position: relative; min-width: 80px; }
+    .score-info { flex: 1; position: relative; }
+    .score-label { font-family: var(--font-display); font-size: 18px; font-weight: 700; letter-spacing: 1px; margin-bottom: 4px; }
+    .score-desc  { font-family: var(--font-ui); font-size: 12px; color: var(--text2); line-height: 1.5; }
+    .score-bar-wrap { margin-top: 9px; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .score-bar { height: 100%; border-radius: 2px; transition: width .9s cubic-bezier(.4,0,.2,1); }
+
+    /* ── Auth grid ── */
+    .auth-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+    .auth-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 12px; text-align: center; }
+    .auth-proto { font-family: var(--font-display); font-size: 12px; font-weight: 700; letter-spacing: 2px; color: var(--text2); margin-bottom: 7px; }
+    .auth-result { font-family: var(--font-mono); font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+    .auth-result.pass    { color: var(--safe); }
+    .auth-result.fail    { color: var(--high); }
+    .auth-result.unknown { color: var(--text3); }
+
+    /* ── Meta table ── */
+    .meta-table { width: 100%; border-collapse: collapse; }
+    .meta-table tr { border-bottom: 1px solid var(--border); }
+    .meta-table tr:last-child { border-bottom: none; }
+    .meta-table td { padding: 9px 0; font-size: 12px; vertical-align: top; }
+    .meta-table td:first-child { font-family: var(--font-mono); font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3); width: 90px; padding-right: 12px; }
+    .meta-table td:last-child { color: var(--text); word-break: break-all; }
+
+    /* ── Unified Threat ── */
+    .unified-bar-wrap { position: relative; height: 28px; background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin: 14px 0; }
+    .unified-bar { height: 100%; border-radius: 4px; transition: width 1s cubic-bezier(.4,0,.2,1); display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: #000; min-width: 40px; }
+    .score-breakdown { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: 12px; }
+    .breakdown-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 10px; text-align: center; }
+    .breakdown-val { font-family: var(--font-display); font-size: 20px; font-weight: 800; color: var(--accent); }
+    .breakdown-lbl { font-family: var(--font-mono); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--text3); margin-top: 3px; }
+
+    /* ── ML Classification ── */
+    .ml-prob-ring { position: relative; width: 100px; height: 100px; flex-shrink: 0; }
+    .ml-prob-ring svg { transform: rotate(-90deg); }
+    .ml-prob-ring .ring-bg { fill: none; stroke: var(--border); stroke-width: 8; }
+    .ml-prob-ring .ring-fill { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 1s cubic-bezier(.4,0,.2,1); }
+    .ml-prob-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .ml-prob-pct { font-family: var(--font-display); font-size: 22px; font-weight: 800; line-height: 1; }
+    .ml-prob-lbl { font-family: var(--font-mono); font-size: 8px; letter-spacing: 1px; color: var(--text3); }
+    .ml-meta { flex: 1; }
+    .ml-verdict { font-family: var(--font-display); font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    .ml-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; font-size: 12px; }
+    .ml-row-label { font-family: var(--font-mono); font-size: 10px; color: var(--text3); letter-spacing: 1px; }
+    .conf-badge { padding: 2px 8px; border-radius: 3px; font-family: var(--font-mono); font-size: 10px; }
+    .conf-high   { background: rgba(255,45,85,.12);  color: var(--high);   border: 1px solid rgba(255,45,85,.3); }
+    .conf-medium { background: rgba(255,149,0,.12);  color: var(--medium); border: 1px solid rgba(255,149,0,.3); }
+    .conf-low    { background: rgba(255,214,10,.12); color: var(--low);    border: 1px solid rgba(255,214,10,.3); }
+
+    /* ── Keyword hits ── */
+    .kw-summary { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .kw-stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 9px 14px; text-align: center; flex: 1; min-width: 70px; }
+    .kw-stat-val { font-family: var(--font-display); font-size: 22px; font-weight: 800; }
+    .kw-stat-lbl { font-family: var(--font-mono); font-size: 9px; letter-spacing: 1px; color: var(--text3); text-transform: uppercase; margin-top: 2px; }
+    .kw-hit { padding: 9px 12px; background: var(--bg2); border-radius: 3px; margin-bottom: 7px; border-left: 2px solid; }
+    .kw-hit.critical { border-color: var(--critical); }
+    .kw-hit.high     { border-color: var(--high); }
+    .kw-hit.medium   { border-color: var(--medium); }
+    .kw-hit.low      { border-color: var(--low); }
+    .kw-hit-header   { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .kw-cat { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+    .kw-cat.critical { color: var(--critical); }
+    .kw-cat.high     { color: var(--high); }
+    .kw-cat.medium   { color: var(--medium); }
+    .kw-cat.low      { color: var(--low); }
+    .kw-weight { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--text3); }
+    .kw-match { font-family: var(--font-mono); font-size: 11px; color: var(--text2); }
+    .kw-snippet { font-size: 11px; color: var(--text3); margin-top: 3px; font-style: italic; }
+    .kw-empty { text-align: center; padding: 28px; color: var(--safe); font-family: var(--font-mono); font-size: 12px; }
+
+    /* ── Feature vector ── */
+    .fv-grid { display: flex; flex-direction: column; gap: 7px; }
+    .fv-row { display: flex; align-items: center; gap: 10px; }
+    .fv-label { font-family: var(--font-mono); font-size: 10px; color: var(--text3); width: 170px; flex-shrink: 0; letter-spacing: .5px; }
+    .fv-bar-wrap { flex: 1; height: 6px; background: var(--bg2); border-radius: 3px; overflow: hidden; border: 1px solid var(--border); }
+    .fv-bar { height: 100%; border-radius: 3px; transition: width .8s ease; }
+    .fv-val { font-family: var(--font-mono); font-size: 10px; color: var(--text2); width: 35px; text-align: right; flex-shrink: 0; }
+    .fv-bar.danger  { background: var(--high); }
+    .fv-bar.warn    { background: var(--medium); }
+    .fv-bar.neutral { background: var(--accent); }
+
+    /* ── MITRE ── */
+    .attack-strip { display: flex; gap: 5px; flex-wrap: wrap; padding: 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 16px; }
+    .tactic-chip { padding: 4px 9px; font-family: var(--font-mono); font-size: 9px; letter-spacing: 1px; border-radius: 3px; border: 1px solid; }
+    .tactic-chip.active   { background: rgba(0,212,255,.15); border-color: var(--accent); color: var(--accent); }
+    .tactic-chip.inactive { background: transparent; border-color: var(--border); color: var(--text3); opacity: .4; }
+    .stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 16px; }
+    .stat-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 12px; text-align: center; }
+    .stat-num { font-family: var(--font-display); font-size: 28px; font-weight: 800; color: var(--accent); line-height: 1; margin-bottom: 3px; }
+    .stat-label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text3); }
+    .technique-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 10px; overflow: hidden; }
+    .technique-header { padding: 12px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; transition: background .15s; }
+    .technique-header:hover { background: rgba(0,212,255,.04); }
+    .tech-id { font-family: var(--font-mono); font-size: 11px; color: var(--accent); min-width: 75px; }
+    .tech-name { flex: 1; font-family: var(--font-display); font-size: 13px; font-weight: 600; }
+    .tech-tactic { font-family: var(--font-mono); font-size: 9px; letter-spacing: 1px; color: var(--accent2); background: rgba(0,255,157,.08); border: 1px solid rgba(0,255,157,.2); padding: 2px 7px; border-radius: 3px; }
+    .confidence-badge { padding: 2px 8px; font-family: var(--font-mono); font-size: 9px; border-radius: 3px; }
+    .conf-H { background: rgba(255,45,85,.12);  color: var(--high);   border: 1px solid rgba(255,45,85,.3); }
+    .conf-M { background: rgba(255,149,0,.12);  color: var(--medium); border: 1px solid rgba(255,149,0,.3); }
+    .conf-L { background: rgba(255,214,10,.12); color: var(--low);    border: 1px solid rgba(255,214,10,.3); }
+    .expand-arrow { color: var(--text3); font-size: 11px; transition: transform .2s; }
+    .expand-arrow.open { transform: rotate(180deg); }
+    .technique-body { padding: 0 14px; max-height: 0; overflow: hidden; transition: max-height .3s ease, padding .3s ease; }
+    .technique-body.open { padding: 0 14px 14px; max-height: 800px; }
+    .sec-label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin: 12px 0 7px; display: flex; align-items: center; gap: 7px; }
+    .sec-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .evidence-item { padding: 7px 11px; background: rgba(255,45,85,.05); border-left: 2px solid var(--high); border-radius: 0 3px 3px 0; font-family: var(--font-mono); font-size: 10px; color: var(--text2); line-height: 1.5; margin-bottom: 5px; }
+    .mitigation-item { padding: 7px 11px; background: rgba(0,255,157,.03); border-left: 2px solid var(--accent2); border-radius: 0 3px 3px 0; font-family: var(--font-mono); font-size: 10px; color: var(--text2); line-height: 1.5; margin-bottom: 5px; }
+    .subtech-row { display: flex; align-items: flex-start; gap: 9px; padding: 7px 11px; background: var(--bg3); border-radius: 3px; margin-bottom: 5px; }
+    .subtech-id { font-family: var(--font-mono); font-size: 10px; color: var(--accent); min-width: 75px; }
+    .subtech-name { font-size: 11px; color: var(--text); line-height: 1.4; }
+    .subtech-desc { font-size: 10px; color: var(--text3); margin-top: 2px; }
+    .external-link { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 9px; color: var(--accent); text-decoration: none; border: 1px solid var(--accent); padding: 3px 9px; border-radius: 3px; margin-top: 10px; transition: all .15s; }
+    .external-link:hover { background: rgba(0,212,255,.1); }
+    .timeline { position: relative; padding-left: 18px; }
+    .timeline::before { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; width: 1px; background: var(--border); }
+    .timeline-item { position: relative; margin-bottom: 10px; padding: 9px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; }
+    .timeline-item::before { content: ''; position: absolute; left: -15px; top: 50%; transform: translateY(-50%); width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 7px var(--accent); }
+    .timeline-phase { font-family: var(--font-mono); font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent2); margin-bottom: 2px; }
+    .timeline-tech  { font-family: var(--font-display); font-size: 12px; font-weight: 600; }
+    .no-threats { text-align: center; padding: 36px 20px; color: var(--safe); font-family: var(--font-mono); font-size: 12px; }
+    .no-threats .check { font-size: 42px; margin-bottom: 10px; }
+    .threat-badge { padding: 5px 12px; border-radius: 20px; font-family: var(--font-display); font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+    .threat-none     { background: rgba(0,255,157,.1);  color: var(--safe);     border: 1px solid var(--safe); }
+    .threat-low      { background: rgba(255,214,10,.1); color: var(--low);      border: 1px solid var(--low); }
+    .threat-medium   { background: rgba(255,149,0,.1);  color: var(--medium);   border: 1px solid var(--medium); }
+    .threat-high     { background: rgba(255,45,85,.1);  color: var(--high);     border: 1px solid var(--high); }
+    .threat-critical { background: rgba(255,0,85,.15);  color: var(--critical); border: 1px solid var(--critical); }
+    .error-box { background: rgba(255,45,85,.08); border: 1px solid rgba(255,45,85,.3); border-radius: 4px; padding: 14px 18px; color: var(--high); font-family: var(--font-mono); font-size: 11px; }
+    .empty-state { text-align: center; padding: 44px 20px; color: var(--text3); font-family: var(--font-mono); font-size: 11px; }
+    .empty-state .icon { font-size: 32px; margin-bottom: 10px; opacity: .4; }
+    .retrain-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+    .retrain-input { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: var(--font-mono); font-size: 11px; padding: 7px 10px; width: 90px; outline: none; }
+    .retrain-input:focus { border-color: var(--accent); }
+    .model-metrics { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; }
+    .metric-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 4px; padding: 10px; text-align: center; }
+    .metric-val { font-family: var(--font-display); font-size: 20px; font-weight: 800; color: var(--accent2); }
+    .metric-lbl { font-family: var(--font-mono); font-size: 9px; letter-spacing: 1px; color: var(--text3); text-transform: uppercase; margin-top: 2px; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-icon">🛡️</div>
+    <div class="header-text">
+      <h1>Email Threat Analyzer</h1>
+      <p>ML Classification · Phishing Detection · MITRE ATT&amp;CK</p>
+    </div>
+    <div class="header-right">
+      <div class="model-pill" onclick="toggleModelPanel()" id="modelPill">🤖 ML Model</div>
+      <div class="status-pill"><div class="status-dot"></div><span id="serverStatus">CONNECTING...</span></div>
+    </div>
+  </header>
+
+  <!-- Model panel (collapsible) -->
+  <div id="modelPanel" style="display:none; margin-bottom:20px;">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-icon">🤖</span>
+        <span class="panel-title">ML Model Manager</span>
+        <span class="panel-badge" id="modelAccBadge"></span>
+      </div>
+      <div class="panel-body">
+        <div id="modelMetrics" class="model-metrics" style="margin-bottom:14px;"></div>
+        <div style="font-family:var(--font-mono); font-size:10px; color:var(--text3); margin-bottom:8px; letter-spacing:1px; text-transform:uppercase;">Retrain Model</div>
+        <div class="retrain-row">
+          <input class="retrain-input" type="number" id="sampleCount" value="600" min="100" max="5000" />
+          <span style="font-family:var(--font-mono);font-size:10px;color:var(--text3);">samples</span>
+          <button class="btn btn-ghost" id="retrainBtn" onclick="retrainModel()" style="font-size:11px;padding:7px 14px;">⚡ Retrain</button>
+          <span id="retrainStatus" style="font-family:var(--font-mono);font-size:10px;color:var(--text3);"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main 3-column grid -->
+  <div class="main-grid">
+
+    <!-- COL 1: Input -->
+    <div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-icon">📨</span>
+          <span class="panel-title">Email Input</span>
+        </div>
+        <div class="panel-body">
+          <label>Raw Email / Headers</label>
+          <textarea id="emailInput" placeholder="Paste raw email headers here...
+
+From: sender@example.com
+To: recipient@example.com
+Subject: Test Email
+Return-Path: &lt;sender@example.com&gt;
+Authentication-Results: spf=pass dkim=pass dmarc=pass
+
+Email body here."></textarea>
+          <div style="margin-top:10px;">
+            <label style="margin-bottom:6px;">Quick Test Samples</label>
+            <div class="samples-row">
+              <button class="sample-btn sample-safe" onclick="loadSample('safe')">✅ Legit</button>
+              <button class="sample-btn sample-low"  onclick="loadSample('low')">⚠️ Low</button>
+              <button class="sample-btn sample-med"  onclick="loadSample('medium')">🔶 Medium</button>
+              <button class="sample-btn sample-high" onclick="loadSample('high')">🚨 Critical</button>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="analyzeBtn" onclick="analyzeEmail()">⚡ Analyze</button>
+            <label class="btn btn-ghost" style="cursor:pointer;">
+              📎 .eml
+              <input type="file" id="emlUpload" accept=".eml,.txt" style="display:none" onchange="handleEmlUpload(event)" />
+            </label>
+            <button class="btn btn-ghost" onclick="clearAll()">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Auth results -->
+      <div class="panel" id="authPanel" style="display:none;">
+        <div class="panel-header"><span class="panel-icon">🔐</span><span class="panel-title">Authentication</span></div>
+        <div class="panel-body">
+          <div class="auth-grid">
+            <div class="auth-card"><div class="auth-proto">SPF</div><div class="auth-result" id="spfResult">—</div></div>
+            <div class="auth-card"><div class="auth-proto">DKIM</div><div class="auth-result" id="dkimResult">—</div></div>
+            <div class="auth-card"><div class="auth-proto">DMARC</div><div class="auth-result" id="dmarcResult">—</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Meta -->
+      <div class="panel" id="metaPanel" style="display:none;">
+        <div class="panel-header"><span class="panel-icon">📋</span><span class="panel-title">Email Metadata</span></div>
+        <div class="panel-body"><table class="meta-table" id="metaTable"></table></div>
+      </div>
+
+      <!-- Feature vector -->
+      <div class="panel" id="fvPanel" style="display:none;">
+        <div class="panel-header">
+          <span class="panel-icon">📐</span><span class="panel-title">Feature Vector</span>
+          <span class="panel-badge">20-dim</span>
+        </div>
+        <div class="panel-body" id="fvBody"></div>
+      </div>
+
+      <div class="loading" id="loading"><div class="spinner"></div><div class="loading-text">RUNNING ML PIPELINE...</div></div>
+      <div id="errorBox" style="display:none; margin-top:14px;"></div>
+    </div>
+
+    <!-- COL 2: ML Results -->
+    <div>
+      <!-- Unified threat -->
+      <div class="panel" id="unifiedPanel" style="display:none;">
+        <div class="panel-header">
+          <span class="panel-icon">🎯</span><span class="panel-title">Unified Threat Score</span>
+          <span class="panel-badge">AUTH 40% · ML 40% · NLP 20%</span>
+        </div>
+        <div class="panel-body" id="unifiedBody"></div>
+      </div>
+
+      <!-- ML Classification -->
+      <div class="panel" id="mlPanel" style="display:none;">
+        <div class="panel-header">
+          <span class="panel-icon">🤖</span><span class="panel-title">ML Classification</span>
+          <span class="panel-badge" style="color:var(--accent2);">Logistic Regression</span>
+        </div>
+        <div class="panel-body" id="mlBody"></div>
+      </div>
+
+      <!-- Keyword detection -->
+      <div class="panel" id="kwPanel" style="display:none;">
+        <div class="panel-header">
+          <span class="panel-icon">🔍</span><span class="panel-title">Phishing Keywords</span>
+          <span class="panel-badge" id="kwBadge"></span>
+        </div>
+        <div class="panel-body" id="kwBody"></div>
+      </div>
+
+      <div class="empty-state" id="mlEmpty">
+        <div class="icon">🤖</div>
+        Submit an email to run ML analysis
+      </div>
+    </div>
+
+    <!-- COL 3: MITRE ATT&CK -->
+    <div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-icon">⚔️</span><span class="panel-title">MITRE ATT&amp;CK</span></div>
+        <div class="panel-body" id="mitrePanel">
+          <div class="empty-state"><div class="icon">⚔️</div>MITRE ATT&amp;CK analysis appears here</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = '/api/v1/email/emailchecking';
+
+const SAMPLES = {
+  safe: `From: legitimate@company.com\nTo: recipient@example.com\nSubject: Weekly Team Meeting Notes\nReturn-Path: <legitimate@company.com>\nAuthentication-Results: spf=pass dkim=pass dmarc=pass\n\nHi team, please find the meeting notes attached. Next standup is Thursday at 3pm.`,
+  low:  `From: sender@company.com\nTo: recipient@example.com\nSubject: Suspicious Email\nReturn-Path: <different@otherdomain.com>\nAuthentication-Results: spf=fail dkim=pass dmarc=pass\n\nThis email failed SPF check.`,
+  medium:`From: admin@company.com\nTo: victim@example.com\nSubject: Verify Your Account Immediately\nReturn-Path: <phishing@malicious.com>\nAuthentication-Results: spf=fail dkim=fail dmarc=pass\n\nPlease verify your account immediately or it will be suspended. Click here to confirm your billing details.`,
+  high: `From: admin@company.com\nTo: victim@example.com\nSubject: URGENT: Reset Your Password NOW\nReturn-Path: <phishing@malicious.com>\nAuthentication-Results: spf=fail dkim=fail dmarc=fail\n\nYour account has been compromised! Click here immediately to reset your password and verify your identity. Enable macros in the attachment to restore access. Your account will be suspended within 24 hours.`
+};
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+fetch('/health').then(async r => {
+  const data = await r.json();
+  document.getElementById('serverStatus').textContent = r.ok ? 'ONLINE' : 'OFFLINE';
+  if (data.ml?.metrics) renderModelMetrics(data.ml.metrics, data.ml.trainedAt);
+}).catch(() => {
+  document.getElementById('serverStatus').textContent = 'OFFLINE';
+  document.getElementById('serverStatus').style.color = 'var(--high)';
+});
+
+// Drag-drop on textarea
+const ta = document.getElementById('emailInput');
+ta.addEventListener('dragover', e => { e.preventDefault(); ta.style.borderColor='var(--accent)'; });
+ta.addEventListener('dragleave', () => { ta.style.borderColor=''; });
+ta.addEventListener('drop', e => { e.preventDefault(); ta.style.borderColor=''; const f = e.dataTransfer.files[0]; if(f) readEml(f); });
+
+function handleEmlUpload(e) { const f = e.target.files[0]; if(f) readEml(f); }
+function readEml(file) { const r = new FileReader(); r.onload = e => { ta.value = e.target.result; }; r.readAsText(file); }
+function loadSample(t) { ta.value = SAMPLES[t]; }
+
+function clearAll() {
+  ta.value = '';
+  ['authPanel','metaPanel','fvPanel','unifiedPanel','mlPanel','kwPanel'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.style.display = 'none';
+  });
+  document.getElementById('mlEmpty').style.display = 'block';
+  document.getElementById('mitrePanel').innerHTML = '<div class="empty-state"><div class="icon">⚔️</div>MITRE ATT&CK analysis appears here</div>';
+  document.getElementById('errorBox').style.display = 'none';
+}
+
+function toggleModelPanel() {
+  const p = document.getElementById('modelPanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  if (p.style.display === 'block') loadModelStatus();
+}
+
+// ── Main analyze ──────────────────────────────────────────────────────────────
+async function analyzeEmail() {
+  const raw = ta.value.trim();
+  if (!raw) { alert('Please paste email content first.'); return; }
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  document.getElementById('loading').classList.add('active');
+  document.getElementById('errorBox').style.display = 'none';
+  document.getElementById('mlEmpty').style.display = 'none';
+
+  try {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rawEmail: raw })
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.message || 'Analysis failed');
+    renderAll(json.data);
+  } catch(err) {
+    document.getElementById('errorBox').innerHTML = `<div class="error-box">⚠️ ${esc(err.message)}</div>`;
+    document.getElementById('errorBox').style.display = 'block';
+    document.getElementById('mlEmpty').style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    document.getElementById('loading').classList.remove('active');
+  }
+}
+
+// ── Render all panels ─────────────────────────────────────────────────────────
+function renderAll(d) {
+  renderAuth(d.authentication);
+  renderMeta(d);
+  renderUnified(d.unifiedThreat);
+  renderML(d.ml);
+  renderKeywords(d.ml?.keywordDetection);
+  renderFeatureVector(d.ml?.featureVector);
+  renderMitre(d.mitreAttack, d.spoofingScore);
+}
+
+function show(id) { const el = document.getElementById(id); if(el) el.style.display='block'; }
+
+// Auth
+function renderAuth(auth) {
+  ['spf','dkim','dmarc'].forEach(p => {
+    const el = document.getElementById(`${p}Result`);
+    const v = auth[p]; el.textContent = v.toUpperCase(); el.className = `auth-result ${v}`;
+  });
+  show('authPanel');
+}
+
+// Meta
+function renderMeta(d) {
+  const from = d.from?.text || (typeof d.from === 'string' ? d.from : '—');
+  const to   = d.to?.text   || (typeof d.to   === 'string' ? d.to   : '—');
+  const rows = [['FROM',from],['TO',to],['SUBJECT',d.subject||'—'],['RETURN-PATH',d.returnPath||'—'],['DATE',d.date?new Date(d.date).toLocaleString():'—']];
+  document.getElementById('metaTable').innerHTML = rows.map(([k,v])=>`<tr><td>${k}</td><td>${esc(String(v))}</td></tr>`).join('');
+  show('metaPanel');
+}
+
+// Unified threat score
+function renderUnified(u) {
+  if (!u) return;
+  const color = sevColor(u.severity);
+  const pct = Math.min(u.score, 100);
+  document.getElementById('unifiedBody').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <span style="font-family:var(--font-display);font-size:28px;font-weight:800;color:${color};">${u.emoji} ${u.score}</span>
+      <span style="font-family:var(--font-display);font-size:16px;font-weight:700;color:${color};">${esc(u.label)}</span>
+    </div>
+    <div class="unified-bar-wrap">
+      <div class="unified-bar" id="uBar" style="width:0%;background:${color};">${u.score > 15 ? u.score+'%' : ''}</div>
+    </div>
+    <div class="score-breakdown">
+      <div class="breakdown-card"><div class="breakdown-val" style="color:${color};">${u.breakdown.authScore??'—'}</div><div class="breakdown-lbl">Auth Score</div></div>
+      <div class="breakdown-card"><div class="breakdown-val" style="color:${color};">${u.breakdown.mlScore??'—'}</div><div class="breakdown-lbl">ML Score</div></div>
+      <div class="breakdown-card"><div class="breakdown-val" style="color:${color};">${u.breakdown.keywordScore??'—'}</div><div class="breakdown-lbl">Keyword</div></div>
+    </div>`;
+  show('unifiedPanel');
+  setTimeout(() => {
+    const b = document.getElementById('uBar');
+    if(b) b.style.width = pct + '%';
+  }, 50);
+}
+
+// ML Classification
+function renderML(ml) {
+  if (!ml?.classification) { show('mlPanel'); document.getElementById('mlBody').innerHTML = `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text3);">Model inference unavailable.</div>`; return; }
+  const c = ml.classification;
+  const prob = c.spoofingProbability;
+  const color = prob > 70 ? 'var(--high)' : prob > 40 ? 'var(--medium)' : 'var(--safe)';
+  const r = 42, circ = 2 * Math.PI * r, offset = circ - (prob / 100) * circ;
+  const confClass = `conf-${c.confidence[0]}`;
+
+  document.getElementById('mlBody').innerHTML = `
+    <div style="display:flex;align-items:center;gap:18px;margin-bottom:14px;">
+      <div class="ml-prob-ring">
+        <svg width="100" height="100" viewBox="0 0 100 100">
+          <circle class="ring-bg" cx="50" cy="50" r="${r}"/>
+          <circle class="ring-fill" id="mlRing" cx="50" cy="50" r="${r}"
+            stroke="${color}" stroke-dasharray="${circ}" stroke-dashoffset="${circ}"/>
+        </svg>
+        <div class="ml-prob-center">
+          <div class="ml-prob-pct" style="color:${color};">${prob}%</div>
+          <div class="ml-prob-lbl">SPOOF</div>
+        </div>
+      </div>
+      <div class="ml-meta">
+        <div class="ml-verdict" style="color:${color};">${esc(c.verdict)}</div>
+        <div class="ml-row"><span class="ml-row-label">CONFIDENCE</span><span class="confidence-badge ${confClass}">${c.confidence}</span></div>
+        <div class="ml-row"><span class="ml-row-label">LABEL</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--text2);">${c.label === 1 ? '1 — Phishing' : '0 — Legitimate'}</span></div>
+      </div>
+    </div>`;
+  show('mlPanel');
+  setTimeout(() => {
+    const ring = document.getElementById('mlRing');
+    if(ring) ring.style.strokeDashoffset = offset;
+  }, 80);
+}
+
+// Phishing keywords
+function renderKeywords(kw) {
+  if (!kw) return;
+  document.getElementById('kwBadge').textContent = `${kw.totalHits} hits · ${kw.uniqueCategories} categories`;
+  const color = sevColor(kw.riskSeverity === 'safe' ? 'safe' : kw.riskSeverity);
+
+  let html = `<div class="kw-summary">
+    <div class="kw-stat"><div class="kw-stat-val" style="color:${color};">${kw.riskScore}</div><div class="kw-stat-lbl">Risk Score</div></div>
+    <div class="kw-stat"><div class="kw-stat-val" style="color:var(--accent);">${kw.totalHits}</div><div class="kw-stat-lbl">Total Hits</div></div>
+    <div class="kw-stat"><div class="kw-stat-val" style="color:var(--accent2);">${kw.uniqueCategories}</div><div class="kw-stat-lbl">Categories</div></div>
+  </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+    <span style="font-family:var(--font-display);font-size:14px;font-weight:700;color:${color};">${esc(kw.riskLabel)}</span>
+  </div>`;
+
+  if (kw.hits.length === 0) {
+    html += `<div class="kw-empty">✅ No phishing keywords detected</div>`;
+  } else {
+    html += kw.hits.map(h => `
+      <div class="kw-hit ${h.severity}">
+        <div class="kw-hit-header">
+          <span class="kw-cat ${h.severity}">${esc(h.category)}</span>
+          <span class="kw-weight">weight: ${h.weight.toFixed(1)}</span>
+        </div>
+        <div class="kw-match">"${esc(h.matchedText)}"</div>
+        ${h.snippet ? `<div class="kw-snippet">${esc(h.snippet)}</div>` : ''}
+      </div>`).join('');
+  }
+
+  document.getElementById('kwBody').innerHTML = html;
+  show('kwPanel');
+}
+
+// Feature vector bars
+function renderFeatureVector(fv) {
+  if (!fv) return;
+  const features = [
+    { label: 'SPF Fail',             val: fv.spfFail,              max: 1,  type: fv.spfFail ? 'danger' : 'neutral' },
+    { label: 'DKIM Fail',            val: fv.dkimFail,             max: 1,  type: fv.dkimFail ? 'danger' : 'neutral' },
+    { label: 'DMARC Fail',           val: fv.dmarcFail,            max: 1,  type: fv.dmarcFail ? 'danger' : 'neutral' },
+    { label: 'Return-Path Mismatch', val: fv.returnPathMismatch,   max: 1,  type: fv.returnPathMismatch ? 'danger' : 'neutral' },
+    { label: 'Subject Urgency',      val: fv.subjectUrgency,       max: 1,  type: fv.subjectUrgency > 0.5 ? 'warn' : 'neutral' },
+    { label: 'Caps Ratio',           val: fv.subjectCapsRatio,     max: 1,  type: fv.subjectCapsRatio > 0.3 ? 'warn' : 'neutral' },
+    { label: 'Phishing KW Score',    val: fv.phishingKeywordScore, max: 1,  type: fv.phishingKeywordScore > 0.5 ? 'danger' : 'neutral' },
+    { label: 'Auth Fail Count',      val: fv.authFailCount,        max: 3,  type: fv.authFailCount > 1 ? 'danger' : 'neutral' },
+    { label: 'Domain Suspicious',    val: fv.fromDomainSuspicious, max: 1,  type: fv.fromDomainSuspicious ? 'danger' : 'neutral' },
+    { label: 'Body URL Count',       val: fv.bodyUrlCount,         max: 10, type: fv.bodyUrlCount > 3 ? 'warn' : 'neutral' },
+  ];
+  document.getElementById('fvBody').innerHTML = `<div class="fv-grid">${
+    features.map(f => {
+      const pct = Math.round((f.val / f.max) * 100);
+      return `<div class="fv-row">
+        <div class="fv-label">${f.label}</div>
+        <div class="fv-bar-wrap"><div class="fv-bar ${f.type}" id="fvb-${f.label.replace(/\s/g,'')}" style="width:0%"></div></div>
+        <div class="fv-val">${typeof f.val === 'number' && f.val % 1 !== 0 ? f.val.toFixed(2) : f.val}</div>
+      </div>`;
+    }).join('')
+  }</div>`;
+  show('fvPanel');
+  setTimeout(() => {
+    features.forEach(f => {
+      const bar = document.getElementById(`fvb-${f.label.replace(/\s/g,'')}`);
+      if(bar) bar.style.width = Math.round((f.val/f.max)*100) + '%';
+    });
+  }, 60);
+}
+
+// ── MITRE ─────────────────────────────────────────────────────────────────────
+function renderMitre(mitre, score) {
+  if (!mitre) return;
+  const { techniques, summary, tacticsTimeline } = mitre;
+  const ALL_TACTICS = ['Reconnaissance','Resource Development','Initial Access','Execution','Persistence','Privilege Escalation','Defense Evasion','Credential Access','Discovery','Lateral Movement','Collection','Command and Control','Exfiltration','Impact'];
+  const activeTactics = new Set(techniques.map(t => t.tactic));
+  const threatClass = `threat-${summary.threatLevel.toLowerCase().replace(/\s+/g,'-')}`;
+
+  let html = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+      <div>
+        <div style="font-family:var(--font-display);font-size:13px;font-weight:700;margin-bottom:3px;">${summary.threatLevel} Threat</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text3);">${esc(summary.threatDescription)}</div>
+      </div>
+      <span class="threat-badge ${threatClass}">${summary.threatLevel}</span>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-num">${summary.totalTechniquesDetected}</div><div class="stat-label">Techniques</div></div>
+      <div class="stat-card"><div class="stat-num">${summary.totalTacticsInvolved}</div><div class="stat-label">Tactics</div></div>
+      <div class="stat-card"><div class="stat-num">${summary.highConfidenceDetections}</div><div class="stat-label">High Conf</div></div>
+    </div>
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">ATT&amp;CK Navigator</div>
+    <div class="attack-strip">${ALL_TACTICS.map(t=>`<span class="tactic-chip ${activeTactics.has(t)?'active':'inactive'}">${t}</span>`).join('')}</div>
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin:12px 0 8px;">Detected Techniques</div>`;
+
+  if (techniques.length === 0) {
+    html += `<div class="no-threats"><div class="check">✅</div>No techniques detected</div>`;
+  } else {
+    html += techniques.map((t,i) => `
+      <div class="technique-card">
+        <div class="technique-header" onclick="toggleTech(${i})">
+          <span class="tech-id">${t.id}</span>
+          <span class="tech-name">${esc(t.name)}</span>
+          <span class="tech-tactic">${esc(t.tactic)}</span>
+          <span class="confidence-badge conf-${t.confidence[0]}">${t.confidence}</span>
+          <span class="expand-arrow" id="arr-${i}">▼</span>
+        </div>
+        <div class="technique-body" id="tbody-${i}">
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text3);line-height:1.6;padding:7px 0;">${esc(t.description)}</div>
+          ${t.evidence.length ? `<div class="sec-label">Evidence</div>${t.evidence.map(e=>`<div class="evidence-item">↳ ${esc(e)}</div>`).join('')}` : ''}
+          ${t.matchedSubtechniques.length ? `<div class="sec-label">Sub-Techniques</div>${t.matchedSubtechniques.map(s=>`<div class="subtech-row"><div class="subtech-id">${s.id}</div><div><div class="subtech-name">${esc(s.name)}</div><div class="subtech-desc">${esc(s.description)}</div></div></div>`).join('')}` : ''}
+          ${t.mitigations.length ? `<div class="sec-label">Mitigations</div>${t.mitigations.map(m=>`<div class="mitigation-item">🛡 ${esc(m)}</div>`).join('')}` : ''}
+          ${t.detectionMethod ? `<div class="sec-label">Detection Method</div><div style="font-family:var(--font-mono);font-size:10px;color:var(--text2);padding:7px 11px;background:var(--bg3);border-radius:3px;">${esc(t.detectionMethod)}</div>` : ''}
+          <a href="${t.url}" target="_blank" class="external-link">↗ View on MITRE ATT&CK</a>
+        </div>
+      </div>`).join('');
+  }
+
+  if (tacticsTimeline?.length > 0) {
+    html += `<div style="font-family:var(--font-mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin:16px 0 10px;">Attack Timeline</div>
+    <div class="timeline">${tacticsTimeline.map(item=>`
+      <div class="timeline-item">
+        <div class="timeline-phase">${item.phase}</div>
+        <div class="timeline-tech">[${item.techniqueId}] ${esc(item.techniqueName)} <span class="confidence-badge conf-${item.confidence[0]}">${item.confidence}</span></div>
+      </div>`).join('')}</div>`;
+  }
+
+  document.getElementById('mitrePanel').innerHTML = html;
+}
+
+function toggleTech(i) {
+  document.getElementById(`tbody-${i}`).classList.toggle('open');
+  document.getElementById(`arr-${i}`).classList.toggle('open');
+}
+
+// ── Model Management ──────────────────────────────────────────────────────────
+async function loadModelStatus() {
+  try {
+    const r = await fetch('/api/v1/email/model-status');
+    const j = await r.json();
+    if (j.data?.metrics) renderModelMetrics(j.data.metrics, j.data.trainedAt);
+  } catch(e) {}
+}
+
+function renderModelMetrics(m, trainedAt) {
+  if (!m) return;
+  document.getElementById('modelAccBadge').textContent = `Accuracy: ${m.accuracy}%`;
+  document.getElementById('modelMetrics').innerHTML = `
+    <div class="metric-card"><div class="metric-val">${m.accuracy}%</div><div class="metric-lbl">Accuracy</div></div>
+    <div class="metric-card"><div class="metric-val">${m.precision}%</div><div class="metric-lbl">Precision</div></div>
+    <div class="metric-card"><div class="metric-val">${m.recall}%</div><div class="metric-lbl">Recall</div></div>
+    <div class="metric-card"><div class="metric-val">${m.f1Score}%</div><div class="metric-lbl">F1 Score</div></div>
+    <div class="metric-card" style="grid-column:span 2;"><div class="metric-val" style="font-size:14px;">${m.trainingSamples || '—'}</div><div class="metric-lbl">Training Samples · Trained ${trainedAt ? new Date(trainedAt).toLocaleString() : 'unknown'}</div></div>`;
+}
+
+async function retrainModel() {
+  const n = parseInt(document.getElementById('sampleCount').value) || 600;
+  const btn = document.getElementById('retrainBtn');
+  const status = document.getElementById('retrainStatus');
+  btn.disabled = true;
+  status.textContent = 'Training...';
+  try {
+    const r = await fetch('/api/v1/email/retrain', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ samples: n })
+    });
+    const j = await r.json();
+    if (j.success) {
+      renderModelMetrics(j.data, new Date().toISOString());
+      status.style.color = 'var(--safe)';
+      status.textContent = `✅ Done! Accuracy: ${j.data.accuracy}%`;
+    } else {
+      status.style.color = 'var(--high)';
+      status.textContent = '❌ ' + (j.message || 'Failed');
+    }
+  } catch(e) {
+    status.style.color = 'var(--high)';
+    status.textContent = '❌ Request failed';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+function sevColor(sev) {
+  return { safe:'var(--safe)', low:'var(--low)', medium:'var(--medium)', high:'var(--high)', critical:'var(--critical)' }[sev] || 'var(--accent)';
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
